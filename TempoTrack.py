@@ -1,4 +1,4 @@
-from datetime import time
+import time
 import sounddevice as sd
 import numpy as np
 import librosa
@@ -6,7 +6,7 @@ import librosa
 
 # parameters
 sample_rate = 44100 # Hz
-buffer_duration = 0.01 # seconds
+buffer_duration = 5 # seconds
 buffer_size = int(buffer_duration * sample_rate) # number of samples per audio block
 
 print("Listening to Music...")
@@ -17,36 +17,34 @@ indata: np array of shape (blocksize, channels) holding the audio samples
 frames: int number of frames or samples in the call
 status: error/ reporting status message
 '''
-def audio_callback(in_data, frame_count, time_info, status):
+def audio_callback(indata, frames, time_info, status):
     if status:
-        print("Status: %d" % status)
+        print(status)
 
-    # get the first channel
-    audio = in_data[:,0]
+    audio = indata[:, 0]  # mono channel
 
-    # skip incomplete buffers
     if len(audio) < buffer_size:
         return
 
-    # Compute the onset envelope, how much audio energy changes overtime
+    # Compute onset envelope
     onset_env = librosa.onset.onset_strength(y=audio, sr=sample_rate)
 
-    # Estimate the song's tempo, BPM on the onset envelope
+    # Estimate tempo & beat frames
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset_env, sr=sample_rate)
     print("Tempo:", tempo)
 
-    # exact time of each beat
+    # Beat times (relative to buffer)
     beat_times = librosa.frames_to_time(beat_frames, sr=sample_rate)
 
-    # Map the beat_times to the system time
+    # Map beat times to system time
     buffer_start_time = time.time() - buffer_duration
     absolute_beat_times = buffer_start_time + beat_times
 
-    # trigger action on each beat detection
+    # Trigger action on beats
     current_time = time.time()
     for beat_time in absolute_beat_times:
-        if abs(current_time - beat_time) < 0.05: # 50 ms tolerance
-            print("Beat Detected at {current_time} - Action triggered!")
+        if abs(current_time - beat_time) < 0.05:
+            print(f"Beat Detected at {current_time:.2f}s - Action triggered!")
 with sd.InputStream(callback=audio_callback, channels=1, samplerate= sample_rate, blocksize=buffer_size) as stream:
     print("Press Ctrl+C to exit")
     try:
